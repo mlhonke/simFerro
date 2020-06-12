@@ -1,0 +1,3 @@
+[submodule "external/simFluid"]
+	path = external/simFluid
+	url = https://github.com/mlhonke/simFluid.git
