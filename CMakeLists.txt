@@ -6,8 +6,8 @@ SET(CMAKE_CXX_COMPILER /usr/bin/g++-8)
 project(simFerro LANGUAGES C CXX)
 
 # Load the libSimFluid library.
-message("Loading the libSimFluid library.")
-add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/external/libSimFluid)
+message("Loading the simFluid library.")
+add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/external/simFluid)
 
 # Points CMAKE to directory containing FindLIBIGL.cmake and other CMAKE find files.
 find_package(Eigen3 3.3 REQUIRED NO_MODULE)
@@ -37,8 +37,8 @@ add_library(simFerro STATIC
         ${simFerroHeaders}
         ${simFerroSources})
 target_include_directories(simFerro PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
-target_include_directories(simFerro PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/external/libSimFluid/include)
-include_directories(${CMAKE_CURRENT_SOURCE_DIR}/external/libSimFluid/includeCUDA)
+target_include_directories(simFerro PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/external/simFluid/include)
+include_directories(${CMAKE_CURRENT_SOURCE_DIR}/external/simFluid/includeCUDA)
 target_link_libraries(simFerro simFluid)
 
 target_link_libraries(simFerro Eigen3::Eigen)
