@@ -8,12 +8,11 @@
 #include "Eigen/Eigenvalues"
 #include "fd_math.hpp"
 #include "sim_pls.hpp"
-#include "sim_pls_cuda.cuh"
+#include "sim_pls_cuda.hpp"
 #include "sim_levelset.hpp"
-//#include "sim_levelset/sim_mesh.hpp"
 #include "CudaCG.hpp"
 #include "sim.hpp"
-//#include <time.h>
+#include "magnet.hpp"
 
 //static Eigen::SparseQR<MatrixA, Eigen::COLAMDOrdering<int>> CG_psi;
 //static Eigen::ConjugateGradient<MatrixA, Eigen::Lower | Eigen::Upper, Eigen::SimplicialCholesky<MatrixA>> CG_psi;
@@ -21,7 +20,7 @@ static Eigen::ConjugateGradient<MatrixA, Eigen::Lower|Eigen::Upper> CG_psi;
 //static Eigen::ConjugateGradient<MatrixA, Eigen::Lower|Eigen::Upper, Eigen::IncompleteCholesky<scalar_t>> CG_psi;
 //static Eigen::SimplicialLLT<MatrixA, Eigen::Lower|Eigen::Upper> CG_psi;
 
-SimFerro::SimFerro(SimParams C, SimWaterParams CW, SimFerroParams CF)
+SimFerro::SimFerro(SimParams C, SimWaterParams CW, SimFerroParams CF, Magnet *magnet)
     :
     SimWater(C, CW),
     M_s(CF.M_s),
@@ -32,7 +31,8 @@ SimFerro::SimFerro(SimParams C, SimWaterParams CW, SimFerroParams CF)
     grid_w_em(CF.grid_w_em),
     grid_h_em(CF.grid_h_em),
     grid_d_em(CF.grid_d_em),
-    n_cells_em(CF.n_cells_em)
+    n_cells_em(CF.n_cells_em),
+    magnet(magnet)
     {
 
     std::cout << "Left EM bound " << -offset_w_em*scale_w << std::endl;
@@ -43,11 +43,7 @@ SimFerro::SimFerro(SimParams C, SimWaterParams CW, SimFerroParams CF)
     n_cells_em_use = 7*n_cells_em - (2*grid_w_em*grid_h_em + 2*grid_h_em*grid_d_em + 2*grid_w_em*grid_d_em);
     std::cout << "Non-zero cells predicted: " << n_cells_em_use << std::endl;
     cudacg_mag = new CudaCG(n_cells_em, n_cells_em_use);
-    cudacg_mag->project = true; // enable projection for pure neumann boundary problems
-
-    // Create a magnet to interact with our ferrofluid. // Was 3000-7000 // 500 for flat is nice
-    magnet = new Magnet({sim_w / 2.0, sim_h/2.0, -0.2}, {sim_w / 2.0, sim_h/2.0, -0.2}, 2.0, {0, 0, 1}, CF.appStrength);
-    magnet->flat_field = false; // Enable for a constant field through all space (eg. homogenous from e-magnet).
+    cudacg_mag->project = true; // enable projection for pure Neumann boundary problems
 
     // Init memory for constant sized arrays / matricies.
     mu = CubeX(grid_w_em, grid_h_em, grid_d_em); //Initialize to permeability of free space.
@@ -88,7 +84,7 @@ SimFerro::SimFerro(SimParams C, SimWaterParams CW, SimFerroParams CF)
     B(1) = grid_trilerp({sim_w/2.0, sim_h/2.0, sim_d/2.0}, Bmag_y, scale_w);
     B(2) = grid_trilerp({sim_w/2.0, sim_h/2.0, sim_d/2.0}, Bmag_z, scale_w);
     scalar_t mu = get_mu_with_Langevin(B(0), B(1), B(2));
-    scalar_t H_crit = std::sqrt((2/MU0)*((1+MU0/mu)/std::pow((MU0/mu -1),2))*std::sqrt(density*std::abs(g)*lambda));
+    scalar_t H_crit = std::sqrt((2/MU0)*((1+MU0/mu)/std::pow((MU0/mu -1),2))*std::sqrt(density*std::abs(g)*density*lambda));
     std::cout << "The critical field value for this simulation is " << H_crit << std::endl;
 
     CubeX Bx(grid_w, grid_h, grid_d);
@@ -157,8 +153,8 @@ void SimFerro::step() {
     }
 
     elapsed_time += dt;
-//    dt = 0.1*get_new_timestep(V);
-    dt = 0.0005;
+    dt = 0.5*get_new_timestep(V);
+//    dt = 0.0005;
 //    dt = 0.5;
 //    if (elapsed_time + dt >= render_time - 1E-14) {
 //        dt = render_time - elapsed_time;
@@ -168,78 +164,13 @@ void SimFerro::step() {
 //    }
     std::cout << "Time Step = " << dt << " Time I" << cur_step << " Total elapsed: " << elapsed_time << " Render Step: " << do_render << std::endl;
 
-    scalar_t max_vel = get_max_vel(V);
-    if (max_vel > scale_w/dt){
-        std::cout << "SIMULATION HAS EXCEEDED MAXIMUM ALLOWED VELOCITY!" << std::endl;
-    }
-//    scalar_t dt_sft = std::sqrt(density/(8.0*PI*lambda))*std::pow(scale_w, 1.5);
-//    std::cout << "Theoretical surface tension time step constract: " << dt_sft << std::endl;
-    // Make sure gravity isn't going to overshoot the dt.
-//    if (dt*g > scale_w){
-//        std::cout << "Restricting time step for gravity" << std::endl;
-//        dt = std::abs(scale_w/g);
-//    }
-
-//    if (cur_step == 0){
-//        dt = -0.1*scale_w/g;
-//    } else {
-//        dt = 0.1 * get_new_timestep(V);
-//    }
-
     std::cout << "Magnet position: " << magnet->get_pos(t) << std::endl;
 
-#ifdef DEBUGSIM
-    std::cout << "Velocities " << std::endl;
-    std::cout << std::setprecision(5) << u << std::endl << std::endl;
-    std::cout << v << std::endl << std::endl;
-#endif
-
-//    auto* execTimer = new ExecTimer("Extrapolate velocities");
     extrapolate_velocities_from_LS();
-//    delete execTimer;
-//    set_boundary_velocities();
-
-#ifdef DEBUGSIM
-    std::cout << "Velocities after extrapolation" << std::endl;
-    std::cout << std::setprecision(5) << u << std::endl << std::endl;
-    std::cout << v << std::endl << std::endl;
-#endif
-
-//    struct timespec begin_ls, end_ls;
-//    clock_gettime(CLOCK_MONOTONIC, &begin_ls);
-//    update_triangle_mesh();
-//    std::cout << "Volume before levelset advancement " << -calc_mesh_volume(mesh) << std::endl;
-//    execTimer = new ExecTimer("Update velocities on device");
     update_velocities_on_device();
-//    delete execTimer;
-//    execTimer = new ExecTimer("Advance LS");
     simLS->advance(cur_step, dt);
-//    delete execTimer;
-//    clock_gettime(CLOCK_MONOTONIC, &end_ls);
-//    double time_spent_ls = (double)(end_ls.tv_sec-begin_ls.tv_sec);
-//    time_spent_ls += (end_ls.tv_nsec - begin_ls.tv_nsec) / 1000000000.0;
-//    std::cout << "Total time spent on surface: " << time_spent_ls << std::endl;
-//    execTimer = new ExecTimer("Update labels");
     update_labels_from_level_set();
-//    delete execTimer;
-//    update_triangle_mesh();
-//    std::cout << "Volume after levelset advancement " << -calc_mesh_volume(mesh) << std::endl;
-//    extrapolate_velocities_from_LS(); // Questionable since now quite detached from divergence free pressure field...
-//    set_boundary_velocities();
-
-#ifdef DEBUGSIM
-    std::cout << "Velocities after second (debatable) extrapolation" << std::endl;
-    std::cout << std::setprecision(5) << u << std::endl << std::endl;
-    std::cout << v << std::endl << std::endl;
-#endif
-
-    // labels are in their final position now
-//    execTimer = new ExecTimer("Update mu from labels");
-    update_mu_from_labels();
-//    delete execTimer;
-
-    std::cout << "Solving for magnetic potential." << std::endl;
-//    execTimer = new ExecTimer("Solve magnetic potential");
+    update_mu_from_labels(); // labels are in their final position now
     solve_ferro();
 //    delete execTimer;
 
@@ -400,33 +331,14 @@ void SimFerro::add_magnet_potential(CubeX &Q, Magnet &M, scalar_t time){
 }
 
 void SimFerro::solve_ferro() {
-#ifdef DEBUGSIM
-    // Check quantities before solving
-    std::cout << "Level Set before psi solve" << std::endl;
-    std::cout << simLS->LS << std::endl;
-    std::cout << "Mu values" << std::endl;
-    std::cout << mu << std::endl;
-    std::cout << "B field values" << std::endl;
-    std::cout << Bmag_x << std::endl;
-    std::cout << Bmag_y << std::endl;
-    std::cout << "Check the magnet" << std::endl;
-    MatrixXs mag_temp(grid_w_em, grid_h_em);
-    for (int i = 0; i < grid_w_em; i++){
-        for (int j = 0; j < grid_h_em; j++){
-            mag_temp(i,j) = magnet->get_psi(Vector2(i*scale_w-offset_w_em*scale_w, j*scale_h - offset_h_em*scale_h), t);
-        }
-    }
-    std::cout << mag_temp << std::endl;
-#endif
+    std::cout << "Solving for magnetic potential." << std::endl;
 
     A_psi.setZero();
     A_psid.setZero();
     A_psi.reserve(Eigen::VectorXi::Constant(n_cells_em, 7));
     A_psid.reserve(Eigen::VectorXi::Constant(n_cells_em, 1));
     b_psi = VectorXs::Zero(n_cells_em, 1);
-//    ExecTimer *execTimer = new ExecTimer("Solve potential build A and B");
     build_A_psi_and_b();
-//    delete execTimer;
 
 //    CubeX b(b_psi.data(), grid_w_em, grid_h_em, grid_d_em);
 //    std::cout << "RHS" << std::endl;
@@ -438,10 +350,6 @@ void SimFerro::solve_ferro() {
 //    es.compute(A_dense, false);
 //    std::cout << "Eigenvalues are " << es.eigenvalues().transpose() << std::endl;
 
-#ifdef DEBUGFERRO
-    std::cout << "Right hand side" << std::endl;
-    std::cout << Eigen::Map<MatrixXs>(b_psi.data(), grid_w_em, grid_h_em) << std::endl;
-#endif
     scalar_t sum = 0;
     for (int j = 0; j < n_cells_em; j++) {
         sum += b_psi(j);
@@ -473,11 +381,8 @@ void SimFerro::solve_ferro() {
     psi.setZero();
     cudacg_mag->load_matrix(A_psi.outerIndexPtr(), A_psi.innerIndexPtr(), A_psi.valuePtr(), (psi.data()), (b_psi.data()), A_psi.rows(), A_psi.nonZeros());
     cudacg_mag->load_diagonal(A_psid.outerIndexPtr(), A_psid.innerIndexPtr(), A_psid.valuePtr());
-//    auto *execTimer2 = new ExecTimer("Actual just solve part of CUDA potential solve");
     cudacg_mag->solve();
-//    delete execTimer2;
     cudacg_mag->get_error();
-//    delete execTimer;
 
 //    std::ofstream badsolvefile;
 //    badsolvefile.open("badsolve.txt");

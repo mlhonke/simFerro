@@ -2,6 +2,7 @@
 #define MAGNET_HPP
 
 #include "sim_params_ferro.hpp"
+#include "sim_external_types.hpp"
 
 class Magnet {
 public:

@@ -1,17 +1,18 @@
 #ifndef SIM_FERRO_HPP
 #define SIM_FERRO_HPP
 
+#include <fstream>
 #include "sim_params.hpp"
 #include "sim_params_ferro.hpp"
-#include "magnet.hpp"
+#include "sim_external_types.hpp"
 #include "sim_water.hpp"
-#include <fstream>
 
 class CudaCG;
+class Magnet;
 
 class SimFerro : public SimWater{
 public:
-    SimFerro(SimParams C, SimWaterParams CW, SimFerroParams CF);
+    SimFerro(SimParams C, SimWaterParams CW, SimFerroParams CF, Magnet *magnet);
     static void create_params_from_args(int argc, char** argv, int& n_steps, SimParams *&retC, SimWaterParams *&retCW, SimFerroParams *&retCF);
     void step();
     scalar_t MUF = 1.0*MU0;
@@ -19,7 +20,7 @@ public:
     void load_data() override;
 
 protected:
-    Magnet* magnet;
+    Magnet *magnet;
     VectorXs psi;
     CubeX Psi;
     CubeX mu;
