@@ -58,6 +58,7 @@ protected:
     scalar_t get_psi(int i, int j, int k); // Coordinates are fluid based.
     scalar_t get_mu_coeff(Vector3 pos);
     void check_divergence_mag(const CubeX &Q);
+    void print_mag_tensor_entries();
 
 private:
     std::ofstream frameData;

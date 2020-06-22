@@ -127,7 +127,6 @@ void SimFerro::create_params_from_args(int argc, char **argv, int &n_steps, SimP
 
 void SimFerro::save_data(){
     SimWater::save_data();
-    // Because I don't want to deal with C files, and this makes it easy to store a vector of parameters if needed.
     VectorX save_t(1);
     save_t[0] = t;
     save_t.save("ferro_state.bin");
@@ -154,8 +153,6 @@ void SimFerro::step() {
 
     elapsed_time += dt;
     dt = 0.5*get_new_timestep(V);
-//    dt = 0.0005;
-//    dt = 0.5;
 //    if (elapsed_time + dt >= render_time - 1E-14) {
 //        dt = render_time - elapsed_time;
 //        render_time += render_dt;
@@ -172,39 +169,15 @@ void SimFerro::step() {
     update_labels_from_level_set();
     update_mu_from_labels(); // labels are in their final position now
     solve_ferro();
-//    delete execTimer;
 
-//    execTimer = new ExecTimer("Add magnetic potential.");
-//    Psi.zeros();
     add_magnet_potential(Psi, *magnet, t);
-//    delete execTimer;
-//    check_divergence(Psi);
-//    std::cout << "Total potential of fluid and magnet" << std::endl;
-//    std::cout << Psi << std::endl;
 
-//    execTimer = new ExecTimer("Calculate gradients");
     calc_grad(Psi.subcube(offset_w_em, offset_h_em, offset_d_em, offset_w_em+grid_w-1, offset_h_em+grid_h-1, offset_d_em+grid_d-1), Bmag_x, Bmag_y, Bmag_z, scale_w);
     Bmag_x = -Bmag_x;
     Bmag_y = -Bmag_y;
     Bmag_z = -Bmag_z;
-//    delete execTimer;
-//    std::cout << "Total mag field" << std::endl;
-//    std::cout << Bmag_z << std::endl;
 
-//    execTimer = new ExecTimer("Update mag tensor entries");
     update_mag_tensor_entries(Psi);
-//    std::cout << "Txx" << std::endl;
-//    std::cout << Tmag_xx << std::endl;
-//    std::cout << "Txy" << std::endl;
-//    std::cout << Tmag_xy << std::endl;
-//    std::cout << "Txz" << std::endl;
-//    std::cout << Tmag_xz << std::endl;
-//    std::cout << "Tyy" << std::endl;
-//    std::cout << Tmag_yy << std::endl;
-//    std::cout << "Tyz" << std::endl;
-//    std::cout << Tmag_yz << std::endl;
-//    std::cout << "Tzz" << std::endl;
-//    std::cout << Tmag_zz << std::endl;
 
 //    delete execTimer;
 
@@ -780,4 +753,20 @@ void SimFerro::check_divergence_mag(const CubeX &Q){
 
     std::cout << "Result of divergence test." << std::endl;
     std::cout << R << std::endl;
+}
+
+void SimFerro::print_mag_tensor_entries() {
+    std::cout << "Printing magnetic tensor entries." << std::endl;
+    std::cout << "Txx" << std::endl;
+    std::cout << Tmag_xx << std::endl;
+    std::cout << "Txy" << std::endl;
+    std::cout << Tmag_xy << std::endl;
+    std::cout << "Txz" << std::endl;
+    std::cout << Tmag_xz << std::endl;
+    std::cout << "Tyy" << std::endl;
+    std::cout << Tmag_yy << std::endl;
+    std::cout << "Tyz" << std::endl;
+    std::cout << Tmag_yz << std::endl;
+    std::cout << "Tzz" << std::endl;
+    std::cout << Tmag_zz << std::endl;
 }
