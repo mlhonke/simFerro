@@ -13,7 +13,7 @@ class Magnet;
 class SimFerro : public SimWater{
 public:
     SimFerro(SimParams C, SimWaterParams CW, SimFerroParams CF, Magnet *magnet);
-    static void create_params_from_args(int argc, char** argv, int& n_steps, SimParams *&retC, SimWaterParams *&retCW, SimFerroParams *&retCF);
+    static void create_ferro_params_from_args(int argc, char** argv, int& n_steps, SimParams *&retC, SimWaterParams *&retCW, SimFerroParams *&retCF);
     void step();
     scalar_t MUF = 1.0*MU0;
     void save_data() override;

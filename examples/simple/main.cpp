@@ -9,7 +9,7 @@ int main(int argc, char** argv){
     SimWaterParams* water_params; // Fluid parameters (viscosity, surface tension...)
     SimFerroParams* ferro_params; // Ferrofluid parameters (magnetic susceptibility...)
     int n_steps;
-    SimFerro::create_params_from_args(argc, argv, n_steps, params, water_params, ferro_params);
+    SimFerro::create_ferro_params_from_args(argc, argv, n_steps, params, water_params, ferro_params);
 
     // Create a magnet to interact with the ferrofluid.
     auto magnet = new Magnet({params->sim_w / 2.0, params->sim_h/2.0, -0.2},

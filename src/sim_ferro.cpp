@@ -101,7 +101,7 @@ SimFerro::SimFerro(SimParams C, SimWaterParams CW, SimFerroParams CF, Magnet *ma
     frameData.open("/home/graphics/Dev/Ferro3D/screens/frameData.txt");
 }
 
-void SimFerro::create_params_from_args(int argc, char **argv, int &n_steps, SimParams *&retC, SimWaterParams *&retCW, SimFerroParams *&retCF) {
+void SimFerro::create_ferro_params_from_args(int argc, char **argv, int &n_steps, SimParams *&retC, SimWaterParams *&retCW, SimFerroParams *&retCF) {
     int i;
     SimWater::create_params_from_args(argc, argv, n_steps, retC, retCW, i);
 
@@ -120,7 +120,6 @@ void SimFerro::create_params_from_args(int argc, char **argv, int &n_steps, SimP
     }
     // Otherwise use default arguments.
     else {
-        n_steps = 1000000;
         retCF = new SimFerroParams();
     }
 }
@@ -167,99 +166,22 @@ void SimFerro::step() {
     update_velocities_on_device();
     simLS->advance(cur_step, dt);
     update_labels_from_level_set();
+
     update_mu_from_labels(); // labels are in their final position now
     solve_ferro();
-
     add_magnet_potential(Psi, *magnet, t);
-
     calc_grad(Psi.subcube(offset_w_em, offset_h_em, offset_d_em, offset_w_em+grid_w-1, offset_h_em+grid_h-1, offset_d_em+grid_d-1), Bmag_x, Bmag_y, Bmag_z, scale_w);
     Bmag_x = -Bmag_x;
     Bmag_y = -Bmag_y;
     Bmag_z = -Bmag_z;
-
     update_mag_tensor_entries(Psi);
-
-//    delete execTimer;
-
-//    std::cout << magnet->get_psi({})
-
-//    std::cout << "Psi Matrix Full" << std::endl;
-//    std::cout << std::setprecision(5) << *Psi << std::endl;
-
-#ifdef DEBUGSIM
-    std::cout << "T tensor entries" << std::endl;
-    std::cout << Tmag_xx << std::endl;
-    std::cout << Tmag_yy << std::endl;
-    std::cout << Tmag_xy << std::endl;
-#endif
-
-    //output_rhs_psi();
-//    check_psi(*Psi);
-//    execTimer = new ExecTimer("Update velocities on device");
     update_velocities_on_device();
-//    delete execTimer;
-//    execTimer = new ExecTimer("Advect velocities");
+
     advect_velocity();
-//    delete execTimer;
-//    set_boundary_velocities();
-
-#ifdef DEBUGSIM
-    std::cout << "Velocities After Advection and before Mag Forces" << std::endl;
-    std::cout << std::setprecision(5) << u << std::endl << std::endl;
-    std::cout << v << std::endl << std::endl;
-    std::cout << "Label" << std::endl;
-    std::cout << label << std::endl << std::endl;
-#endif
-
-    //apply_force_from_magnets();
-//    execTimer = new ExecTimer("Apply force from tensor");
-//    std::cout << "Velocity before tensor." << std::endl;
-//    std::cout << V[0] << std::endl;
-//    std::cout << V[1] << std::endl;
-//    std::cout << V[2] << std::endl;
     apply_force_from_tensor();
-//    std::cout << "Velocity after tensor." << std::endl;
-//    std::cout << V[0] << std::endl;
-//    std::cout << V[1] << std::endl;
-//    std::cout << V[2] << std::endl;
-//    delete execTimer;
-//    set_boundary_velocities();
-
-#ifdef DEBUGSIM
-    std::cout << "Velocities After Mag Forces Applied" << std::endl;
-    std::cout << std::setprecision(5) << u << std::endl << std::endl;
-    std::cout << v << std::endl << std::endl;
-#endif
-
-//    execTimer = new ExecTimer("Add gravity");
     add_gravity_to_velocity(V[2], dt);
-//    delete execTimer;
-//    set_boundary_velocities();
-
-//    execTimer = new ExecTimer("Solve viscosity");
     solve_viscosity(); // Should respect boundary velocities (returning them as is).
-//    set_boundary_velocities();
-//    delete execTimer;
-//    set_boundary_velocities();
-
-//    execTimer = new ExecTimer("Solve pressure");
     solve_pressure(fluid_label, true, false, false);
-//    delete execTimer;
-#ifdef DEBUGSIM
-    std::cout << "Pressure after solve" << std::endl;
-    std::cout << *P << std::endl << std::endl;
-#endif
-
-//    CubeX divs = CubeX(grid_w, grid_h, grid_d, arma::fill::zeros);
-//    check_divergence(divs);
-//    std::cout << "Divergence of velocity field after pressure solve." << std::endl;
-//    std::cout << divs << std::endl;
-
-#ifdef DEBUGSIM
-    std::cout << "Velocities After Pressure Forces Applied" << std::endl;
-    std::cout << std::setprecision(5) << u << std::endl << std::endl;
-    std::cout << v << std::endl << std::endl;
-#endif
 
     t += dt;
     cur_step++;
@@ -313,16 +235,6 @@ void SimFerro::solve_ferro() {
     b_psi = VectorXs::Zero(n_cells_em, 1);
     build_A_psi_and_b();
 
-//    CubeX b(b_psi.data(), grid_w_em, grid_h_em, grid_d_em);
-//    std::cout << "RHS" << std::endl;
-//    std::cout << b << std::endl;
-
-//    Eigen::MatrixXd A_dense;
-//    A_dense = Eigen::MatrixXd(A_psi);
-//    Eigen::EigenSolver<Eigen::MatrixXd> es;
-//    es.compute(A_dense, false);
-//    std::cout << "Eigenvalues are " << es.eigenvalues().transpose() << std::endl;
-
     scalar_t sum = 0;
     for (int j = 0; j < n_cells_em; j++) {
         sum += b_psi(j);
@@ -334,11 +246,6 @@ void SimFerro::solve_ferro() {
 
     A_psi.makeCompressed();
     A_psid.makeCompressed();
-//    std::cout << A_psi.valuePtr() << std::endl; //values in matrix
-//    for (int i = 0; i < A_psi.outerSize(); i++) {
-//        std::cout << A_psi.outerIndexPtr()[i] << std::endl; //n values in each row (i+1, starts with zero).
-//    }
-//    std::cout << A_psi.innerIndexPtr() << std::endl; //indices of non-zero elements in each row.
 //    CG_psi.setMaxIterations(100000);
 //    CG_psi.compute(A_psi);
 //    if (CG_psi.info() != Eigen::Success) {
@@ -350,7 +257,6 @@ void SimFerro::solve_ferro() {
     std::cout << "N cells being used in sparse matrix " << A_psi.nonZeros() << std::endl;
 
     // CUDA CG Steps
-//    execTimer = new ExecTimer("Do CUDA potential solve");
     psi.setZero();
     cudacg_mag->load_matrix(A_psi.outerIndexPtr(), A_psi.innerIndexPtr(), A_psi.valuePtr(), (psi.data()), (b_psi.data()), A_psi.rows(), A_psi.nonZeros());
     cudacg_mag->load_diagonal(A_psid.outerIndexPtr(), A_psid.innerIndexPtr(), A_psid.valuePtr());
